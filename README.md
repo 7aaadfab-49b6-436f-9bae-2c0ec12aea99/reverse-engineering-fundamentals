@@ -1,6 +1,6 @@
-# Week 1 - Reverse
+# Reverse Engineering Fundamentals
 
-Crackmes - Reverse Engineering Fundamentals
+Crackmes
 
 ## Build
 ```bash
