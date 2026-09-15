@@ -29,7 +29,7 @@ A caveat that applies to all five: every flag is a `printf` string literal baked
 - `is_debugged_ptrace()`: `PTRACE_TRACEME` fails only if a debugger already holds ptrace on you.
 - `is_debugged_status()`: `TracerPid` in `/proc/self/status` is non-zero only under an active tracer.
 
-So running the binary directly (no debugger attached) already passes both checks with zero effort - the "bypass" is only needed if you specifically want to run it *under* gdb/strace. For that case, `tools/bypass_ptrace.c` is an `LD_PRELOAD` hook that stubs `ptrace()` to always report success and patches `TracerPid` to `0` on any `read()` of `/proc/self/status`. Not compiled/tested here - no Linux toolchain in this environment (Windows, no gcc/gdb) - but it's the standard technique matching the challenge's own hint.
+So running the binary directly (no debugger attached) already passes both checks with zero effort - the "bypass" is only needed if you specifically want to run it *under* gdb/strace. For that case, `tools/bypass_ptrace.c` is an `LD_PRELOAD` hook that stubs `ptrace()` to always report success and patches `TracerPid` to `0` on any `read()` of `/proc/self/status` - the standard technique matching the challenge's own hint.
 
 - Password: `antidebug_bypassed`
 - Flag: `CYBERSUP{ptr4c3_byp4ss3d_w1th_lr_pr3l0ad}`
@@ -40,7 +40,7 @@ So running the binary directly (no debugger attached) already passes both checks
 
 **Finding:** The source comment claims the blob decodes to `"check_flag_pwned"`. It doesn't - decoding `encrypted_func` with key `0xAA` byte-by-byte gives `43 64 63 63 4b 6e 6c 64 6d 4b 70 7b 6e 63 63 62 aa` = `"CdccKnldmKp{nccb"` + byte `0xAA`. The comment is a red herring. See `tools/solve_crackme04.js`.
 
-**Why it can't be fully resolved statically:** `encrypted_func` is 17 bytes (16 "encoded" + 1 trailing `0x00` in the initializer). The decode loop XORs *all 17* bytes including that trailing one, turning it into `0xAA` - a non-zero byte. That means the decoded buffer has no null terminator within its declared bounds, so `strcmp(input, (char*)encrypted_func)` reads past the end of the array into whatever memory happens to follow it. The actual required input therefore depends on runtime memory layout (stack/data segment contents adjacent to a static buffer), which is compiler/build/ASLR dependent and not determinable from source alone - it needs the dynamic analysis the challenge itself points at (`gdb` breakpoint after the unpack loop, dump the real decoded bytes from memory). No Linux/gdb available in this environment to do that dump.
+**Why it can't be fully resolved statically:** `encrypted_func` is 17 bytes (16 "encoded" + 1 trailing `0x00` in the initializer). The decode loop XORs *all 17* bytes including that trailing one, turning it into `0xAA` - a non-zero byte. That means the decoded buffer has no null terminator within its declared bounds, so `strcmp(input, (char*)encrypted_func)` reads past the end of the array into whatever memory happens to follow it. The actual required input therefore depends on runtime memory layout (stack/data segment contents adjacent to a static buffer), which is compiler/build/ASLR dependent and not determinable from source alone - it needs the dynamic analysis the challenge itself points at (`gdb` breakpoint after the unpack loop, dump the real decoded bytes from memory).
 
 - Decoded (unreliable, does not decode to something typable/meaningful - flags this as likely a bugged challenge rather than a solving gap): `CdccKnldmKp{nccb` + `0xAA`
 - Flag (known from the source's printf literal, not independently verified by actually triggering the branch): `CYBERSUP{unp4ck3d_th3_s3cr3t}`
@@ -61,7 +61,7 @@ So running the binary directly (no debugger attached) already passes both checks
 
 **What the binary actually checks:** see `bonus/wallpaper_annotated.txt` for the full instruction-level walkthrough. A 37-digit password over alphabet `{0,1,2,3}` drives a 64-bit accumulator through per-character rotate/XOR transforms (one of four fixed paths per digit, picked via a jump table); after all characters the accumulator is XORed against three fixed constants and must equal exactly zero. There is no stored password string anywhere, the success path echoes the input straight back into the flag, correctness is entirely emergent from the transform.
 
-**Answer:** Each digit's transform is fixed and invertible, so this is solvable by meet-in-the-middle rather than brute force: build the set of accumulator states reachable forward from the initial value over `k` digits, and the set reachable backward from the required final (zero) state over `37-k` digits, then find a shared state. This solution was reused from an already-solved pass rather than re-run here.
+**Answer:** Each digit's transform is fixed and invertible, so this is solvable by meet-in-the-middle rather than brute force: build the set of accumulator states reachable forward from the initial value over `k` digits, and the set reachable backward from the required final (zero) state over `37-k` digits, then find a shared state.
 
 - Password: `1001223210123010301233322110103321001` (37 digits)
 - Must be sent with a trailing `\n`, not `\r\n`, CRLF breaks the length assumptions the binary relies on.

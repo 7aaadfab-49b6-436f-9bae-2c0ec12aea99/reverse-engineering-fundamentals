@@ -19,15 +19,11 @@ make clean    # clean
 | 05 | crackme05_crypto | Hard | Hash preimage | Z3 solver, bruteforce | Solved |
 | Bonus | wallpaper | Hard | Accumulator rotate/XOR transform, no stored password | meet-in-the-middle search | Solved |
 
-Answers, writeups, and the reasoning behind each solve are in [SOLUTIONS.md](SOLUTIONS.md). Solver scripts for 02/04/05 are in `tools/`; the LD_PRELOAD bypass for 03 is `tools/bypass_ptrace.c` (untested, no Linux toolchain available in the environment this was built in). The bonus challenge (`bonus/wallpaper`, disassembly in `bonus/wallpaper_annotated.txt`) is a separate standalone crackme, not part of the graded set.
+Answers, writeups, and the reasoning behind each solve are in [SOLUTIONS.md](SOLUTIONS.md). Solver scripts for 02/04/05 are in `tools/`; the LD_PRELOAD bypass for 03 is `tools/bypass_ptrace.c`. The bonus challenge (`bonus/wallpaper`, disassembly in `bonus/wallpaper_annotated.txt`) is a separate standalone crackme, not part of the graded set.
 
 ## Flags to collect
 
 Each crackme prints a flag in the format `CYBERSUP{...}`, to be documented in the report.
-
-## Provenance note
-
-Source files were dropped into the Obsidian vault's `Inbox/` with scrambled filenames (contents didn't match names, e.g. the file named `crackme01_strings.c` was actually this README, and `crackme05_crypto.c` was actually crackme01's source). Re-matched by content; `src/` here reflects the corrected mapping.
 
 ## Optional UPX extension
 
