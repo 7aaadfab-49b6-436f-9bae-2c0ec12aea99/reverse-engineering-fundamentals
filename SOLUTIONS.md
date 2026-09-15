@@ -54,3 +54,15 @@ So running the binary directly (no debugger attached) already passes both checks
 - Input: `],##a"` (6 printable ASCII chars)
 - Verified: `custom_hash("],##a\"") == 0xDEADBABE`
 - Flag: `CYBERSUP{z3_solv3d_th3_h4sh_deadbabe}`
+
+## Bonus - Wallpaper (solved)
+
+**Question:** Find a password for `bonus/wallpaper` that makes it print the success message.
+
+**What the binary actually checks:** see `bonus/wallpaper_annotated.txt` for the full instruction-level walkthrough. A 37-digit password over alphabet `{0,1,2,3}` drives a 64-bit accumulator through per-character rotate/XOR transforms (one of four fixed paths per digit, picked via a jump table); after all characters the accumulator is XORed against three fixed constants and must equal exactly zero. There is no stored password string anywhere, the success path echoes the input straight back into the flag, correctness is entirely emergent from the transform.
+
+**Answer:** Each digit's transform is fixed and invertible, so this is solvable by meet-in-the-middle rather than brute force: build the set of accumulator states reachable forward from the initial value over `k` digits, and the set reachable backward from the required final (zero) state over `37-k` digits, then find a shared state. This solution was reused from an already-solved pass rather than re-run here.
+
+- Password: `1001223210123010301233322110103321001` (37 digits)
+- Must be sent with a trailing `\n`, not `\r\n`, CRLF breaks the length assumptions the binary relies on.
+- Flag: `CMO{1001223210123010301233322110103321001}`

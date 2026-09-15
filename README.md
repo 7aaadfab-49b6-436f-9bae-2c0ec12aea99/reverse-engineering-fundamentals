@@ -17,8 +17,9 @@ make clean    # clean
 | 03 | crackme03_antidebug | Medium | Anti-debug bypass | gdb, LD_PRELOAD | Solved |
 | 04 | crackme04_packed | Medium+ | RAM unpacking | gdb, memory dump | Challenge appears broken, see SOLUTIONS.md |
 | 05 | crackme05_crypto | Hard | Hash preimage | Z3 solver, bruteforce | Solved |
+| Bonus | wallpaper | Hard | Accumulator rotate/XOR transform, no stored password | meet-in-the-middle search | Solved |
 
-Answers, writeups, and the reasoning behind each solve are in [SOLUTIONS.md](SOLUTIONS.md). Solver scripts for 02/04/05 are in `tools/`; the LD_PRELOAD bypass for 03 is `tools/bypass_ptrace.c` (untested, no Linux toolchain available in the environment this was built in).
+Answers, writeups, and the reasoning behind each solve are in [SOLUTIONS.md](SOLUTIONS.md). Solver scripts for 02/04/05 are in `tools/`; the LD_PRELOAD bypass for 03 is `tools/bypass_ptrace.c` (untested, no Linux toolchain available in the environment this was built in). The bonus challenge (`bonus/wallpaper`, disassembly in `bonus/wallpaper_annotated.txt`) is a separate standalone crackme, not part of the graded set.
 
 ## Flags to collect
 

@@ -1,0 +1,227 @@
+================================================================================
+ BLOCK 1: print "enter password"
+================================================================================
+400078: mov  $0x1,%rax        ; syscall number 1 = "write"
+40007f: mov  $0x1,%rdi        ; file descriptor 1 = stdout
+400086: lea  0x40024e,%rsi    ; rsi = address of the prompt string in memory
+40008e: mov  $0xf,%rdx        ; rdx = 15, the exact byte-length of the string
+400095: syscall                ; write(fd=1, buf=rsi, len=15)
+                                ;   -> the string at 0x40024e gets printed:
+                                ;      it should read "enter password"
+
+
+================================================================================
+ BLOCK 2: read your input
+================================================================================
+400097: xor  %rax,%rax        ; rax = 0, syscall number 0 = "read"
+40009a: xor  %rdi,%rdi        ; rdi = 0, file descriptor 0 = stdin
+40009d: lea  0x400297,%rsi    ; rsi = address of an empty buffer that will hold your input
+4000a5: mov  $0x26,%rdx       ; rdx = 0x26 = 38 (decimal), the max number of bytes to accept
+4000ac: syscall                ; read(fd=0, buf=rsi, len=38)
+                                ;   -> whatever you type gets copied into the buffer at 0x400297
+                                ;   -> from here on, "the buffer" / "rbx" always refers to this input
+
+
+================================================================================
+ BLOCK 3: loop #1 -- scans your input BACKWARD, one byte at a time
+================================================================================
+4000ae: lea  0x400297,%rbx        ; rbx = base address of your input buffer (fixed for the rest of the program)
+4000b6: mov  $0x26,%rcx           ; rcx = 38, used here purely as a countdown index
+
+    LOOP #1 START  (walks index rcx from 37 down to 0) --------------------
+    |
+    |   4000bd: dec  %rcx                     ; rcx = rcx - 1  (first pass: 38 -> 37)
+    |   4000c0: js   0x4000dd                 ; if rcx just went negative (i.e. rcx WAS 0 and is now -1):
+    |                                         ;    every index has been checked -> LEAVE loop #1, fall into BLOCK 4
+    |
+    |   4000c2: movzbq (%rbx,%rcx,1),%rax     ; rax = the single byte at input[rcx], zero-extended to 64 bits
+    |   4000c7: movabs $0xf000000000400,%rdx  ; rdx = a fixed 64-bit constant -- treat it as a 64-bit BITMASK,
+    |                                         ;   one bit per possible byte VALUE 0..63 (only the low 6 bits of
+    |                                         ;   rax actually select which bit of rdx gets tested)
+    |   4000d1: bt   %rax,%rdx                ; CF (carry flag) = bit number (rax mod 64) of rdx
+    |                                         ;   in plain words: "is input[rcx]'s value one of the values
+    |                                         ;   this mask marks as allowed?"
+    |   4000d5: jae  0x400226                 ; jae == "jump if CF was 0" == that bit was NOT set
+    |                                         ;   -> this byte failed the allow-list check -> BLOCK 8's
+    |                                         ;      "wrong password" branch, program ends here
+    |   4000db: jmp  0x4000bd                 ; bit WAS set, byte is allowed -> go back to top, check next index
+    |
+    LOOP #1 END  (only reached by the js at 4000c0 falling through to 4000dd) -
+
+
+================================================================================
+ BLOCK 4 / BLOCK 5 / BLOCK 6: loop #2 -- the main per-character scrambler
+   (these three blocks are really ONE loop body; block 5 and block 6 are
+    nested inside the same iteration as block 4, and control returns to
+    the top of block 4 every time block 6 finishes -- see 4001d4)
+================================================================================
+4000dd: movabs $0xb6fd071e9c8a3425,%rax   ; rax = the running "accumulator" -- this is the ONE value that
+                                            ;   carries state from character to character. Its final value
+                                            ;   after the last character is everything BLOCK 7 checks.
+4000e7: xor  %rdi,%rdi                     ; rdi = 0 -- character index, moving FORWARD this time (unlike loop #1)
+
+LOOP #2 START  (repeats once per input character, rdi = 0, 1, 2, ...) ========
+|
+|   ---- exit test for the whole outer loop -------------------------------
+|   4000ea: movabs $0x2000000000,%rsi      ; rsi = a fixed constant used only to encode "which index is the
+|                                            ;   last character" -- exactly one bit of it is set
+|   4000f4: bt   %rdi,%rsi                 ; CF = bit number (rdi mod 64) of rsi
+|   4000f8: jb   0x4001d9                  ; if that bit IS set: rdi has reached the stopping index ->
+|                                            ;   LEAVE loop #2 entirely, jump straight to BLOCK 7 (final check)
+|                                            ;   (note: the length loop #1 walks (38) and the index that stops
+|                                            ;   loop #2 are NOT necessarily the same number)
+|
+|   ---- load this character -----------------------------------------------
+|   4000fe: mov  (%rbx,%rdi,1),%dl         ; dl = input[rdi], the character being processed this pass
+|   400101: inc  %rcx                      ; rcx enters this pass as 0xffffffffffffffff (set at 4001ce/4001d1
+|                                            ;   on the previous pass, or implicitly -1 the first time), so
+|                                            ;   this inc makes rcx = 0
+|   400104: shl  $0x2,%rcx                 ; rcx = rcx * 4 -- rcx is being used below as a ROTATE-AMOUNT
+|                                            ;   counter, always kept a multiple of 4
+|
+|   INNER SUB-LOOP START  (nested inside loop #2 -- runs a variable number
+|   |                      of times per character, "peeling" the
+|   |                      accumulator 4 bits at a time until it hits a
+|   |                      zero nibble) ------------------------------------
+|   |
+|   |   400108: ror  %cl,%rax              ; rotate accumulator RIGHT by rcx bits (only %cl, the low byte
+|   |                                        ;   of rcx, is used as the rotate amount)
+|   |   40010b: mov  %rax,%rsi             ; rsi = snapshot of the just-rotated accumulator
+|   |   40010e: and  $0xf,%sil             ; sil = lowest 4 bits (one nibble) of that snapshot
+|   |   400112: push %rsi                  ; push the whole qword (top byte = sil) onto the stack --
+|   |                                        ;   from here the value is manipulated IN MEMORY, on the stack,
+|   |                                        ;   not in a register
+|   |   400113: negb (%rsp)                ; negate (two's-complement) just the byte sitting on top of stack
+|   |   400116: or   (%rsp),%sil           ; sil = sil OR (that negated byte)
+|   |                                        ;   -- classic "was the nibble zero?" trick: n | (-n) is 0 ONLY
+|   |                                        ;   when n itself was already 0; for any nonzero n it is nonzero
+|   |   40011a: je   0x400128              ; if the result was zero (nibble WAS zero) -> BREAK the inner
+|   |                                        ;   sub-loop, fall through past it
+|   |
+|   |   40011c: rol  %cl,%rax              ; nibble was NON-zero: undo the ror from 400108 (rotate back left)
+|   |   40011f: shr  $0x2,%rcx             ; rcx = rcx / 4  (undo the earlier *4 scaling, one "step" worth)
+|   |   400123: inc  %rcx                  ; rcx += 1        (advance to the next rotate amount)
+|   |   400126: jmp  0x400104              ; back to the top of THIS inner sub-loop with the new rcx
+|   |
+|   INNER SUB-LOOP END  (only reached via the je at 40011a) -----------------
+|
+|   400128: rol  %cl,%rax                  ; undo the final ror once more (restores accumulator's orientation
+|                                            ;   to match how many steps the inner sub-loop actually took)
+|   40012b: shr  $0x2,%rcx                 ; rcx /= 4 -- rcx now records HOW MANY sub-loop steps happened
+|                                            ;   before a zero nibble was found
+|   40012f: movzbq %dl,%rdx                ; rdx = your character's raw byte value, zero-extended
+|   400133: add  $0x8,%rsp                 ; pop the pushed qword off the stack (without reading it into a reg)
+|   400137: movabs $0x3bb97ffd7ffd6eec,%rsi ; rsi = another fixed 64-bit constant, used as a second bitmask
+|   400141: shl  $0x2,%rcx                 ; rcx *= 4 again
+|   400145: add  $0xd0,%dl                 ; dl = your character's value + 0xd0 (wraps mod 256)
+|   400148: add  %rdx,%rcx                 ; rcx = rcx + (that shifted character value)
+|   40014b: bt   %rcx,%rsi                 ; CF = bit number (rcx mod 64) of rsi
+|   40014f: jae  0x400226                  ; that bit NOT set -> this character fails -> "wrong password"
+|                                            ;   (BLOCK 8), program ends here
+|
+|   400155: sub  %rdx,%rcx                 ; rcx = rcx - (character value + 0xd0)  -- undoes the add at 400148
+|   400158: lea  0x6(,%rdx,2),%rdx         ; rdx = rdx*2 + 6 -- computes an offset used as a JUMP TABLE index
+|
+|   ------------------------------------------------------------------------
+|   BLOCK 5 (nested):  4-way jump table -- picks exactly ONE of 4 fixed
+|                       constants based on the offset just computed, then
+|                       all 4 paths rejoin at the SAME place (400187)
+|   ------------------------------------------------------------------------
+|   |
+|   |   400160: call 0x400165        ; "get my own instruction pointer" trick -- NOT a real function call,
+|   |                                  ;   this just pushes the address 0x400165 onto the stack so it can be
+|   |                                  ;   popped into a register on the next line
+|   |   400165: pop  %rsi            ; rsi = 0x400165 (the address right after this call)
+|   |   400166: add  %rdx,%rsi       ; rsi = 0x400165 + rdx  -> the actual jump target, chosen by rdx
+|   |   400169: jmp  *%rsi           ; jump to whichever of the 4 addresses below rdx pointed at
+|   |
+|   |       400016b: jmp 0x400173    ; \
+|   |       40016d: jmp 0x40017a     ;  \  four tiny trampolines, one per possible rdx value,
+|   |       40016f: jmp 0x400181     ;  /  each landing on a different "push $constant" below
+|   |       400171: jmp 0x400185     ; /
+|   |
+|   |       PATH A -> 400173: push $0xf0    ; \
+|   |       PATH B -> 40017a: push $0xfc    ;  \  exactly ONE of these four executes per character,
+|   |       PATH C -> 400181: push $0x10    ;  /  pushing one fixed byte-ish constant onto the stack
+|   |       PATH D -> 400185: push $0x4     ; /
+|   |
+|   |       (all four paths fall straight through into BLOCK 6 at 400187 --
+|   |        there is no separate "join" instruction, they just converge
+|   |        by flowing into the same next address)
+|   |
+|   ------------------------------------------------------------------------
+|   BLOCK 6 (nested):  further scrambling using whichever constant BLOCK 5
+|                       picked, operating on a value sitting ON THE STACK
+|                       (not in a register) via memory-operand rotates
+|   ------------------------------------------------------------------------
+|   |
+|   |   400187: push %rax                 ; save the accumulator on the stack too (now stack has:
+|   |                                       ;   [top] path-constant, accumulator-copy, ... )
+|   |   400188: add  0x8(%rsp),%cl        ; cl += the path-constant that's 8 bytes further down the stack
+|   |   40018c: rorq %cl,(%rsp)           ; rotate the QWORD *sitting in memory at (%rsp)* right by cl bits
+|   |                                       ;   (note: this rotates a stack SLOT, not a register)
+|   |   400190: movzbq (%rsp),%rsi        ; rsi = low byte of that just-rotated stack value
+|   |   400195: andb $0xf0,(%rsp)         ; mask the stack byte down to its high nibble, in place
+|   |   400199: and  $0xf,%rsi            ; rsi = low nibble of what was read at 400190
+|   |   40019d: neg  %rcx                 ; rcx = -rcx
+|   |   4001a0: add  $0x40,%rcx           ; rcx = 64 - (old rcx)   -- i.e. the COMPLEMENTARY rotate amount
+|   |   4001a4: rorq %cl,(%rsp)           ; rotate the stack slot right by that complementary amount
+|   |   4001a8: sub  $0x40,%rcx           ; rcx -= 64
+|   |   4001ac: neg  %rcx                 ; rcx = -rcx   (rcx is now back to its ORIGINAL value)
+|   |   4001af: sub  0x8(%rsp),%cl        ; cl -= the path-constant again
+|   |   4001b3: rorq %cl,(%rsp)           ; rotate the stack slot right by that adjusted amount
+|   |   4001b7: or   %sil,(%rsp)          ; OR the saved low nibble (from 400199) back into the stack byte
+|   |   4001bb: neg  %rcx                 ; rcx = -rcx
+|   |   4001be: add  $0x40,%rcx           ; rcx = 64 - rcx
+|   |   4001c2: rorq %cl,(%rsp)           ; one final rotate of the stack slot by that amount
+|   |   4001c6: pop  %rax                 ; rax = the fully re-scrambled accumulator, pulled back off the stack
+|   |   4001c7: add  $0x8,%rsp            ; discard the leftover path-constant slot underneath it
+|   |
+|   ---- advance to next character, reset rcx, loop back --------------------
+|   4001cb: inc  %rdi                     ; rdi += 1  -- move on to the next character of your input
+|   4001ce: xor  %rcx,%rcx                ; rcx = 0
+|   4001d1: not  %rcx                     ; rcx = 0xffffffffffffffff (-1)  -- primed for the "inc %rcx" at
+|   |                                       ;   the top of the next pass (400101), which turns this back into 0
+|   4001d4: jmp  0x4000ea                 ; back to the very top of LOOP #2 for the next character
+|
+LOOP #2 END  (only reached via the jb at 4000f8, once rdi hits the stop bit) =
+
+
+================================================================================
+ BLOCK 7: final check
+================================================================================
+4001d9: movabs $0x123456789abcdef,%rbx    ; fixed constant #1
+4001e3: xor  %rbx,%rax                    ; accumulator ^= constant #1
+4001e6: movabs $0x1111111111111111,%rbx   ; fixed constant #2
+4001f0: xor  %rbx,%rax                    ; accumulator ^= constant #2
+4001f3: movabs $0xeeeeeeeeeeeeeeee,%rbx   ; fixed constant #3
+4001fd: xor  %rbx,%rax                    ; accumulator ^= constant #3
+400200: test %rax,%rax                    ; sets ZF if accumulator == 0 after all three XORs
+400203: jne  0x400226                     ; NOT zero -> "wrong password" (BLOCK 8)
+                                            ; falls through only when the accumulator is EXACTLY zero
+
+
+================================================================================
+ BLOCK 8: print result and exit
+================================================================================
+400205-400222: print "good job, validate with CMO{your_input}"   ; only reached on success
+                                                                    ; (echoes back whatever you typed --
+                                                                    ;  see note below)
+400226-400243: print "wrong password"                             ; reached from:
+                                                                    ;   - loop #1's jae (4000d5)
+                                                                    ;   - loop #2's jae (40014f)
+                                                                    ;   - block 7's jne (400203)
+400245-40024c: exit(0)
+
+
+================================================================================
+ NOTE on the success message
+================================================================================
+The success path prints your OWN input back inside "CMO{...}". Nothing in
+this binary stores the correct password anywhere as plaintext -- there is no
+`cmp` against a fixed string. "Correctness" is entirely emergent from whether
+your bytes drive the accumulator in BLOCK 4/5/6 to exactly zero after the
+three XORs in BLOCK 7. That means there is no single address you could jump
+to that "has" the password sitting in memory -- the checks (loop #1's
+allow-list, loop #2's per-character bit tests, and the final zero test) are
+gates on an algorithm, not lookups against stored data.
