@@ -19,7 +19,7 @@ make clean    # clean
 | 05 | crackme05_crypto | Hard | Hash preimage | Z3 solver, bruteforce | Solved |
 | Bonus | wallpaper | Hard | Accumulator rotate/XOR transform, no stored password | meet-in-the-middle search | Solved |
 
-Answers, writeups, and the reasoning behind each solve are in [SOLUTIONS.md](SOLUTIONS.md). Solver scripts for 02/04/05 are in `tools/`; the LD_PRELOAD bypass for 03 is `tools/bypass_ptrace.c`. The bonus challenge (`bonus/wallpaper`, disassembly in `bonus/wallpaper_annotated.txt`) is a separate standalone crackme, not part of the graded set.
+Answers, writeups, and the reasoning behind each solve are in [SOLUTIONS.md](SOLUTIONS.md). Solver scripts for 02/04/05 are in `tools/`; the LD_PRELOAD bypass for 03 is `tools/bypass_ptrace.c`. The bonus challenge is `bonus/wallpaper`, disassembly in `bonus/wallpaper_annotated.txt`.
 
 ## Flags to collect
 
